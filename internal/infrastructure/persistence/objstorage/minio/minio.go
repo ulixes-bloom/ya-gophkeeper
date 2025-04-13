@@ -3,7 +3,6 @@ package minio
 
 import (
 	"context"
-	"fmt"
 	"io"
 
 	"github.com/minio/minio-go/v7"
@@ -36,7 +35,7 @@ func New(endpoint, accessKeyID, secretAccessKey, bucket string) (*minIOStorage, 
 func (m *minIOStorage) SaveFileInChunks(ctx context.Context, objectName string, reader io.Reader) error {
 	_, err := m.client.PutObject(ctx, m.bucket, objectName, reader, -1, minio.PutObjectOptions{})
 	if err != nil {
-		return fmt.Errorf("minio.SaveFileInChunks: %w", err)
+		return err
 	}
 
 	return nil
@@ -46,7 +45,7 @@ func (m *minIOStorage) SaveFileInChunks(ctx context.Context, objectName string, 
 func (m *minIOStorage) ReadFileInChunks(ctx context.Context, objectName string) (io.ReadCloser, error) {
 	object, err := m.client.GetObject(ctx, m.bucket, objectName, minio.GetObjectOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("minio.ReadFileInChunks: %v", err)
+		return nil, err
 	}
 	return object, nil
 }
@@ -55,7 +54,7 @@ func (m *minIOStorage) ReadFileInChunks(ctx context.Context, objectName string) 
 func (m *minIOStorage) DeleteFile(ctx context.Context, objectName string) error {
 	err := m.client.RemoveObject(ctx, m.bucket, objectName, minio.RemoveObjectOptions{})
 	if err != nil {
-		return fmt.Errorf("minio.DeleteFile: %v", err)
+		return err
 	}
 
 	return nil

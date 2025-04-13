@@ -3,7 +3,7 @@ package pg
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"errors"
 
 	"github.com/ulixes-bloom/ya-gophkeeper/internal/domain"
 )
@@ -15,7 +15,7 @@ func (p *postgresDB) CreateSecret(ctx context.Context, secret *domain.Secret) er
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id;`, secret.Name, secret.UserID, secret.Type, secret.Data, secret.Metadata, secret.Version)
 	if err != nil {
-		return fmt.Errorf("pg.CreateSecret: %w", err)
+		return err
 	}
 
 	return nil
@@ -30,14 +30,14 @@ func (p *postgresDB) GetSecretsList(ctx context.Context, userID string) ([]strin
 		FROM secrets
 		WHERE user_id=$1;`, userID)
 	if err != nil {
-		return []string{}, fmt.Errorf("pg.GetSecretsList: %w", err)
+		return []string{}, err
 	}
 
 	for rows.Next() {
 		var secretName string
 		err := rows.Scan(&secretName)
 		if err != nil {
-			return []string{}, fmt.Errorf("pg.GetSecretsList: %w", err)
+			return []string{}, err
 		}
 		list = append(list, secretName)
 	}
@@ -53,11 +53,11 @@ func (p *postgresDB) IsSecretExist(ctx context.Context, userID, secretName strin
 		WHERE user_id=$1 AND name=$2;`, userID, secretName).Scan(&exists)
 
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
 
-		return false, fmt.Errorf("pg.GetLatestSecretByName: %w", err)
+		return false, err
 	}
 
 	return true, nil
@@ -76,11 +76,11 @@ func (p *postgresDB) GetLatestSecretByName(ctx context.Context, userID, secretNa
 		ORDER BY version DESC
 		LIMIT 1;`, userID, secretName).Scan(&secret.ID, &secret.Type, &secret.Data, &secret.Metadata, &secret.Version, &secret.CreatedAt)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("pg.GetLatestSecretByName: %w", domain.ErrSecretNotFound)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrSecretNotFound
 		}
 
-		return nil, fmt.Errorf("pg.GetLatestSecretByName: %w", err)
+		return nil, err
 	}
 
 	return &secret, nil
@@ -98,10 +98,10 @@ func (p *postgresDB) GetSecretByVersion(ctx context.Context, userID, secretName 
 		FROM secrets
 		WHERE user_id=$1 AND name=$2 AND version=$3;`, userID, secretName, version).Scan(&secret.ID, &secret.Type, &secret.Data, &secret.Metadata, &secret.CreatedAt)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("pg.GetSecretByVersion: %w", domain.ErrSecretVersionNotFound)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrSecretVersionNotFound
 		}
-		return nil, fmt.Errorf("pg.GetSecretByVersion: %w", err)
+		return nil, err
 	}
 
 	return &secret, nil
@@ -113,7 +113,7 @@ func (p *postgresDB) DeleteSecret(ctx context.Context, userID, secretName string
 		DELETE FROM secrets
 		WHERE user_id=$1 AND name=$2`, userID, secretName)
 	if err != nil {
-		return fmt.Errorf("pg.DeleteSecret: %w", err)
+		return err
 	}
 
 	return nil

@@ -23,7 +23,7 @@ type postgresDB struct {
 func New(ctx context.Context, db *sql.DB, migrationsPath string) (*postgresDB, error) {
 	newPG := &postgresDB{db: db}
 	if err := newPG.runMigrations(migrationsPath); err != nil {
-		return nil, fmt.Errorf("pg.New: %w", err)
+		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 	return newPG, nil
 }
@@ -31,7 +31,7 @@ func New(ctx context.Context, db *sql.DB, migrationsPath string) (*postgresDB, e
 // Shutdown gracefully closes the database connection.
 func (pg *postgresDB) Shutdown() error {
 	if err := pg.db.Close(); err != nil {
-		return fmt.Errorf("pg.Shutdown: %w", err)
+		return fmt.Errorf("failed to close db: %w", err)
 	}
 
 	return nil
@@ -42,18 +42,18 @@ func (pg *postgresDB) runMigrations(migrationsPath string) error {
 	// Initialize the migration driver for PostgreSQL.
 	driver, err := postgres.WithInstance(pg.db, &postgres.Config{})
 	if err != nil {
-		return fmt.Errorf("pg.runMigrations: %w", err)
+		return fmt.Errorf("failed to create migration driver: %w", err)
 	}
 
 	// Create a new migration instance.
 	m, err := migrate.NewWithDatabaseInstance(fmt.Sprint("file://", migrationsPath), "postgres", driver)
 	if err != nil {
-		return fmt.Errorf("pg.runMigrations: %w", err)
+		return fmt.Errorf("failed to create a new migration instance: %w", err)
 	}
 
 	// Apply migrations; ignore "no change" errors.
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("pg.runMigrations: %w", err)
+		return fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
 	return nil

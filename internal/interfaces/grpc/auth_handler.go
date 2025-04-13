@@ -45,19 +45,18 @@ func (h *AuthHandler) Login(ctx context.Context, in *pb.AuthRequest) (*pb.AuthRe
 	}
 
 	token, err := h.service.Login(ctx, login, password)
-	if err != nil {
-		switch {
-		case errors.Is(err, domain.ErrUserNotFound):
-			logCtx.Warn().Err(err).Msg(domain.ErrUserNotFound.Error())
-			return nil, status.Error(codes.NotFound, domain.ErrUserNotFound.Error())
-		default:
-			logCtx.Error().Err(err).Msg("login failed")
-			return nil, status.Error(codes.Internal, "login failed")
-		}
+	switch {
+	case err == nil:
+		logCtx.Info().Msg("user logged in successfully")
+		return &pb.AuthResponse{Token: token}, nil
+	case errors.Is(err, domain.ErrUserNotFound):
+		logCtx.Warn().Err(err).Msg(domain.ErrUserNotFound.Error())
+		return nil, status.Error(codes.NotFound, domain.ErrUserNotFound.Error())
+	default:
+		logCtx.Error().Err(err).Msg("login failed")
+		return nil, status.Error(codes.Internal, "login failed")
 	}
 
-	logCtx.Info().Msg("user logged in successfully")
-	return &pb.AuthResponse{Token: token}, nil
 }
 
 // Register processes user registration requests and returns a JWT token upon success.
@@ -76,19 +75,17 @@ func (h *AuthHandler) Register(ctx context.Context, in *pb.AuthRequest) (*pb.Aut
 	}
 
 	token, err := h.service.Register(ctx, login, password)
-	if err != nil {
-		switch {
-		case errors.Is(err, domain.ErrLoginExists):
-			logCtx.Warn().Err(err).Msg("registration failed")
-			return nil, status.Error(codes.AlreadyExists, domain.ErrLoginExists.Error())
-		default:
-			logCtx.Error().Err(err).Msg("registration failed")
-			return nil, status.Error(codes.Internal, "registration failed")
-		}
+	switch {
+	case err == nil:
+		logCtx.Info().Msg("user registered successfully")
+		return &pb.AuthResponse{Token: token}, nil
+	case errors.Is(err, domain.ErrLoginExists):
+		logCtx.Warn().Err(err).Msg("registration failed")
+		return nil, status.Error(codes.AlreadyExists, domain.ErrLoginExists.Error())
+	default:
+		logCtx.Error().Err(err).Msg("registration failed")
+		return nil, status.Error(codes.Internal, "registration failed")
 	}
-
-	logCtx.Info().Msg("user registered successfully")
-	return &pb.AuthResponse{Token: token}, nil
 }
 
 func (h *AuthHandler) validateLoginAndPassword(login, password string) (bool, error) {

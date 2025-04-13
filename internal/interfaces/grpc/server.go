@@ -77,9 +77,9 @@ func (g *grpcServer) Run(ctx context.Context) error {
 
 	select {
 	case err := <-errChan:
-		return fmt.Errorf("grpcapi.run: %w", err)
+		return fmt.Errorf("error during gRPC server work: %w", err)
 	case <-ctx.Done():
-		log.Info().Msg("Context canceled, stopping the server...")
+		log.Info().Msg("context canceled, stopping the server...")
 		grpcServer.GracefulStop()
 		return nil
 	}

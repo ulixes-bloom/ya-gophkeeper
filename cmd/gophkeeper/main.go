@@ -17,11 +17,13 @@ import (
 )
 
 func main() {
+	// Load configuration
 	conf, err := config.Parse()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to parse config")
 	}
 
+	// Set up context with graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(),
 		syscall.SIGINT,
 		syscall.SIGTERM,
@@ -29,12 +31,14 @@ func main() {
 	)
 	defer stop()
 
+	// Configure logging level
 	logLvl, err := zerolog.ParseLevel(conf.LogLvl)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to parse log level")
 	}
 	zerolog.SetGlobalLevel(logLvl)
 
+	// Initialize DB repository
 	db, err := sql.Open("pgx", conf.DatabaseURI)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create DB connection")
@@ -45,6 +49,7 @@ func main() {
 		log.Error().Err(err).Msg("Failed to initialize DB")
 	}
 
+	// Initialize object repository
 	objStorage, err := minio.New(
 		conf.MinIOEndpoint,
 		conf.MinIOAccessKeyID,
@@ -54,10 +59,12 @@ func main() {
 		log.Error().Err(err).Msg("Failed to initialize Object Storage")
 	}
 
+	// Initialize services
 	secretService := application.NewSecretService(dbStorage, objStorage, []byte(conf.RootKey))
 	authService := application.NewAuthService(dbStorage, conf.JWTTokenBuildKey, conf.JWTTokenLifetime)
-	srv := grpc.NewServer(secretService, authService, conf.GRPCRunAddr, conf.JWTTokenBuildKey)
 
+	// Initialize and run grpc server
+	srv := grpc.NewServer(secretService, authService, conf.GRPCRunAddr, conf.JWTTokenBuildKey)
 	err = srv.Run(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("Server encountered an error")

@@ -3,7 +3,7 @@ package pg
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"errors"
 
 	"github.com/ulixes-bloom/ya-gophkeeper/internal/domain"
 )
@@ -18,9 +18,9 @@ func (p *postgresDB) CreateUser(ctx context.Context, login, passwordHash string)
 		RETURNING id;`, login, passwordHash).Scan(&userID)
 	if err != nil {
 		if isUniqueViolation(err, "users_login_key") {
-			return nil, fmt.Errorf("pg.CreateUser: %w", domain.ErrLoginExists)
+			return nil, domain.ErrLoginExists
 		}
-		return nil, fmt.Errorf("pg.CreateUser: %w", err)
+		return nil, err
 	}
 
 	return &domain.User{ID: userID, Login: login, PasswordHash: passwordHash}, err
@@ -34,10 +34,10 @@ func (p *postgresDB) FindUserByLogin(ctx context.Context, login string) (*domain
 		FROM users
 		WHERE login=$1;`, login).Scan(&user.ID, &user.Login, &user.PasswordHash)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("pg.FindUserByLogin: %w", domain.ErrUserNotFound)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
 		}
-		return nil, fmt.Errorf("pg.FindUserByLogin: %w", err)
+		return nil, err
 	}
 
 	return &user, err

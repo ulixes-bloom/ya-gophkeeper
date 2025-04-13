@@ -29,17 +29,17 @@ func NewAuthService(repo domain.UserRepository, jwtTokenBuildKey string, jwtToke
 func (s *AuthService) Register(ctx context.Context, login, password string) (string, error) {
 	passwordHash, err := security.HashPassword(password)
 	if err != nil {
-		return "", fmt.Errorf("application.Register: %w", err)
+		return "", fmt.Errorf("security.HashPassword: %w", err)
 	}
 
 	domainUser, err := s.repo.CreateUser(ctx, login, passwordHash)
 	if err != nil {
-		return "", fmt.Errorf("application.Register: %w", err)
+		return "", fmt.Errorf("repo.CreateUser: %w", err)
 	}
 
 	token, err := security.BuildJWTToken(domainUser.ID, s.jwtTokenBuildKey, s.jwtTokenLifetime)
 	if err != nil {
-		return "", fmt.Errorf("application.Register: %w", err)
+		return "", fmt.Errorf("security.BuildJWTToken: %w", err)
 	}
 
 	return token, nil
@@ -49,16 +49,16 @@ func (s *AuthService) Register(ctx context.Context, login, password string) (str
 func (s *AuthService) Login(ctx context.Context, login, password string) (string, error) {
 	domainUser, err := s.repo.FindUserByLogin(ctx, login)
 	if err != nil {
-		return "", fmt.Errorf("application.Login: %w", err)
+		return "", fmt.Errorf("repo.FindUserByLogin: %w", err)
 	}
 
 	if err := security.ValidatePasswordHash(password, domainUser.PasswordHash); err != nil {
-		return "", fmt.Errorf("application.Login: %w", err)
+		return "", fmt.Errorf("security.ValidatePasswordHash: %w", err)
 	}
 
 	token, err := security.BuildJWTToken(domainUser.ID, s.jwtTokenBuildKey, s.jwtTokenLifetime)
 	if err != nil {
-		return "", fmt.Errorf("application.Login: %w", err)
+		return "", fmt.Errorf("security.BuildJWTToken: %w", err)
 	}
 
 	return token, nil

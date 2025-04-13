@@ -5,6 +5,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -27,14 +28,14 @@ type AESDecryptingReader struct {
 func NewAESDecryptingReader(r io.Reader, key []byte) (*AESDecryptingReader, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("security.NewAESDecryptingReader: failed to create cipher: %w", err)
+		return nil, fmt.Errorf("failed to create cipher block: %w", err)
 	}
 
 	// Read the IV (Initialization Vector) from the stream
 	iv := make([]byte, aes.BlockSize)
 	if n, err := io.ReadFull(r, iv); err != nil {
 		fmt.Println(n)
-		return nil, fmt.Errorf("security.NewAESDecryptingReader: failed to read IV: %w", err)
+		return nil, fmt.Errorf("failed to read iv: %w", err)
 	}
 
 	stream := cipher.NewCFBDecrypter(block, iv)
@@ -55,18 +56,16 @@ func NewAESDecryptingReader(r io.Reader, key []byte) (*AESDecryptingReader, erro
 // Read reads decrypted data from the underlying stream into the provided byte slice p.
 func (a *AESDecryptingReader) Read(p []byte) (int, error) {
 	n, err := a.reader.Read(p)
-	if err != nil {
-		if err == io.EOF {
-			// If EOF, propagate without further processing
-			return 0, io.EOF
-		}
-		return n, fmt.Errorf("security.AESDecryptingReader.Read: failed to read data: %w", err)
+	if n > 0 {
+		// Decrypt the data in-place using the XOR key stream method
+		a.stream.XORKeyStream(p[:n], p[:n])
 	}
 
-	// Decrypt the data in-place using the XOR key stream method
-	a.stream.XORKeyStream(p[:n], p[:n])
+	if err != nil && !errors.Is(err, io.EOF) {
+		return n, fmt.Errorf("aes decrypt read error: %w", err)
+	}
 
-	return n, nil
+	return n, err
 }
 
 // Close closes the reader if it implements io.Closer.
@@ -82,13 +81,13 @@ func (a *AESDecryptingReader) Close() error {
 func NewAESEncryptingReader(r io.Reader, key []byte) (*AESEncryptingReader, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("security.NewAESEncryptingReader: failed to create cipher: %w", err)
+		return nil, fmt.Errorf("failed to create cipher block: %w", err)
 	}
 
 	// Generate a random IV (Initialization Vector) for encryption
 	iv := make([]byte, aes.BlockSize)
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		return nil, fmt.Errorf("security.NewAESEncryptingReader: failed to read random IV: %w", err)
+		return nil, fmt.Errorf("failed to read random iv: %w", err)
 	}
 
 	stream := cipher.NewCFBEncrypter(block, iv)
@@ -105,16 +104,14 @@ func NewAESEncryptingReader(r io.Reader, key []byte) (*AESEncryptingReader, erro
 // Read reads encrypted data from the underlying stream and encrypts it on-the-fly.
 func (a *AESEncryptingReader) Read(p []byte) (int, error) {
 	n, err := a.reader.Read(p)
-	if err != nil {
-		if err == io.EOF {
-			// If EOF, propagate without further processing
-			return 0, io.EOF
-		}
-		return n, fmt.Errorf("security.AESEncryptingReader.Read: failed to read data: %w", err)
+	if n > 0 {
+		// Encrypt the data using the XOR key stream method
+		a.stream.XORKeyStream(p[:n], p[:n])
 	}
 
-	// Encrypt the data using the XOR key stream method
-	a.stream.XORKeyStream(p[:n], p[:n])
+	if err != nil && !errors.Is(err, io.EOF) {
+		return n, fmt.Errorf("aes decrypt read error: %w", err)
+	}
 
 	return n, nil
 }
@@ -124,12 +121,12 @@ func DecryptAES(encryptedData []byte, key []byte) ([]byte, error) {
 	input := bytes.NewReader(encryptedData)
 	decryptReader, err := NewAESDecryptingReader(input, key)
 	if err != nil {
-		return nil, fmt.Errorf("security.DecryptAES: failed to create decrypting reader: %w", err)
+		return nil, fmt.Errorf("failed to create decrypting reader: %w", err)
 	}
 
 	var decryptedData bytes.Buffer
 	if _, err := io.Copy(&decryptedData, decryptReader); err != nil {
-		return nil, fmt.Errorf("security.DecryptAES: failed to copy decrypted data: %w", err)
+		return nil, fmt.Errorf("failed to copy decrypted data: %w", err)
 	}
 
 	return decryptedData.Bytes(), nil

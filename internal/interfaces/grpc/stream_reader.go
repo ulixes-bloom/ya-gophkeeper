@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -43,21 +44,20 @@ func (r *secretStreamReader) Read(p []byte) (int, error) {
 func (r *secretStreamReader) receiveNextChunk() error {
 	response, err := r.stream.Recv()
 	if err != nil {
-		// Handle EOF (end of stream)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return io.EOF
 		}
 		return fmt.Errorf("grpc.receiveNextChunk: %w", err)
 	}
 
-	// Store the received data in the buffer and reset the index
-	r.buffer = response.GetData()
-	r.index = 0
-
 	// If there’s no data, we return EOF explicitly, avoiding unnecessary reads
 	if len(r.buffer) == 0 {
 		return io.EOF
 	}
+
+	// Store the received data in the buffer and reset the index
+	r.buffer = response.GetData()
+	r.index = 0
 
 	return nil
 }

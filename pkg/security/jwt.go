@@ -18,7 +18,7 @@ type Claims struct {
 func BuildJWTToken(userID string, secretKey string, tokenLifetime time.Duration) (string, error) {
 	// Validate the userID is not empty
 	if userID == "" {
-		return "", fmt.Errorf("security.BuildJWTToken: userID cannot be empty")
+		return "", fmt.Errorf("userID cannot be empty")
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, Claims{
@@ -30,7 +30,7 @@ func BuildJWTToken(userID string, secretKey string, tokenLifetime time.Duration)
 
 	tokenString, err := token.SignedString([]byte(secretKey))
 	if err != nil {
-		return "", fmt.Errorf("security.BuildJWTToken: failed to sign JWT token: %w", err)
+		return "", fmt.Errorf("failed to sign jwt token: %w", err)
 	}
 
 	return tokenString, nil
@@ -45,11 +45,11 @@ func GetUserID(tokenString, secretKey string) (string, error) {
 	})
 	if err != nil {
 		log.Error().Msg(err.Error())
-		return "", fmt.Errorf("security.GetUserID: failed to parse JWT token: %w", err)
+		return "", fmt.Errorf("failed to parse jwt token: %w", err)
 	}
 
 	if !token.Valid {
-		return "", fmt.Errorf("security.GetUserID: token is not valid")
+		return "", fmt.Errorf("jwt token is not valid")
 	}
 
 	return claims.UserID, nil

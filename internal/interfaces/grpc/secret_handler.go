@@ -231,25 +231,23 @@ func (h *SecretHandler) GetSecretByVersion(ctx context.Context, in *pb.GetSecret
 	}
 
 	domainSecret, err := h.service.GetSecretByVersion(ctx, userID, secretName, secretVersion)
-	if err != nil {
-		switch {
-		case errors.Is(err, domain.ErrSecretNotFound):
-			logCtx.Warn().Err(err).Msg("secret not found")
-			return nil, status.Error(codes.NotFound, domain.ErrSecretNotFound.Error())
-		case errors.Is(err, domain.ErrSecretVersionNotFound):
-			logCtx.Warn().Err(err).Msg("secret version not found")
-			return nil, status.Error(codes.NotFound, domain.ErrSecretVersionNotFound.Error())
-		default:
-			logCtx.Error().Err(err).Msg("failed to get secret by version")
-			return nil, status.Error(codes.Internal, "failed to get secret by version")
-		}
+	switch {
+	case err == nil:
+		logCtx.Info().Msg("secret version retrieved successfully")
+		return &pb.GetSecretResponse{
+			Info: mapDomainSecretToProtoGetSecretInfoResponse(domainSecret),
+			Data: string(domainSecret.Data),
+		}, nil
+	case errors.Is(err, domain.ErrSecretNotFound):
+		logCtx.Warn().Err(err).Msg("secret not found")
+		return nil, status.Error(codes.NotFound, domain.ErrSecretNotFound.Error())
+	case errors.Is(err, domain.ErrSecretVersionNotFound):
+		logCtx.Warn().Err(err).Msg("secret version not found")
+		return nil, status.Error(codes.NotFound, domain.ErrSecretVersionNotFound.Error())
+	default:
+		logCtx.Error().Err(err).Msg("failed to get secret by version")
+		return nil, status.Error(codes.Internal, "failed to get secret by version")
 	}
-
-	logCtx.Info().Msg("secret version retrieved successfully")
-	return &pb.GetSecretResponse{
-		Info: mapDomainSecretToProtoGetSecretInfoResponse(domainSecret),
-		Data: string(domainSecret.Data),
-	}, nil
 }
 
 // GetLatestSecretStream streams the latest secret's data by chunks.
@@ -285,13 +283,11 @@ func (h *SecretHandler) GetLatestSecretStream(in *pb.GetLatestSecretRequest, str
 	}
 	defer secretReader.Close()
 
-	// send first chunk with secret metadata
 	if err := h.sendMetadataChunk(stream, secret); err != nil {
 		logCtx.Error().Err(err).Msg("failed to send metadata chunk")
 		return status.Error(codes.Internal, "failed to send metadata")
 	}
 
-	// Read the secret data in chunks and send each chunk to the client
 	if err := h.sendDataChunks(stream, secretReader); err != nil {
 		logCtx.Error().Err(err).Msg("failed to send data chunks")
 		return status.Error(codes.Internal, "failed to stream data")
@@ -313,6 +309,7 @@ func (h *SecretHandler) GetSecretStreamByVersion(in *pb.GetSecretByVersionReques
 
 	secretName := in.GetName()
 	secretVersion := in.GetVersion()
+
 	logCtx := h.logger.With().
 		Str("method", "GetSecretStreamByVersion").
 		Str("user_id", userID).
@@ -346,13 +343,11 @@ func (h *SecretHandler) GetSecretStreamByVersion(in *pb.GetSecretByVersionReques
 	}
 	defer secretReader.Close()
 
-	// send first chunk with secret information
 	if err := h.sendMetadataChunk(stream, secret); err != nil {
 		logCtx.Error().Err(err).Msg("failed to send secret metadata")
 		return status.Error(codes.Internal, "failed to send secret metadata")
 	}
 
-	// Read the secret data in chunks and send each chunk to the client
 	if err := h.sendDataChunks(stream, secretReader); err != nil {
 		logCtx.Error().Err(err).Msg("failed to send secret chunk")
 		return status.Error(codes.Internal, "failed to send secret chunk")

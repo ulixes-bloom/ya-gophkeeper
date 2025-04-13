@@ -45,11 +45,11 @@ func Parse() (*Config, error) {
 	flag.Parse()
 
 	if err := env.Parse(&conf); err != nil {
-		return nil, fmt.Errorf("config.Parse: %w", err)
+		return nil, fmt.Errorf("failed to load config values from env variables: %w", err)
 	}
 
 	if err := conf.Validate(); err != nil {
-		return nil, fmt.Errorf("config.Parse: %w", err)
+		return nil, fmt.Errorf("failed to validate config: %w", err)
 	}
 
 	return &conf, nil
@@ -77,11 +77,11 @@ func (conf *Config) Validate() error {
 	var errs []error
 
 	if conf.DatabaseURI == "" {
-		errs = append(errs, errors.New("DatabaseURI is required"))
+		errs = append(errs, errors.New("database uri is required"))
 	}
 
 	if conf.JWTTokenLifetime < 0 {
-		errs = append(errs, errors.New("JWT Token lifetime must not be negative"))
+		errs = append(errs, errors.New("jwt token lifetime must not be negative"))
 	}
 
 	if len(errs) > 0 {

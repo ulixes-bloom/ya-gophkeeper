@@ -32,7 +32,7 @@ type Secret struct {
 
 var (
 	ErrSecretNotFound           = errors.New("secret not found")
-	ErrSecretVersionNotFound    = errors.New("secret version mismatch")
+	ErrSecretVersionNotFound    = errors.New("secret version not found")
 	ErrInvalidSecretType        = errors.New("invalid secret type")
 	ErrEmptySecretInfo          = errors.New("secret info not provided")
 	ErrEmptySecretName          = errors.New("secret name not provided")

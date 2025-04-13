@@ -31,7 +31,7 @@ func NewSecretService(db domain.SecretRepository, objStorage domain.SecretObject
 func (s *SecretService) CreateSecret(ctx context.Context, secret *domain.Secret, contentReader io.Reader) error {
 	dbSecret, err := s.db.GetLatestSecretByName(ctx, secret.UserID, secret.Name)
 	if err != nil && !errors.Is(err, domain.ErrSecretNotFound) {
-		return fmt.Errorf("application.CreateSecret: %w", err)
+		return fmt.Errorf("db.GetLatestSecretByName: %w", err)
 	}
 	if dbSecret != nil {
 		secret.Version = dbSecret.Version + 1
@@ -41,7 +41,7 @@ func (s *SecretService) CreateSecret(ctx context.Context, secret *domain.Secret,
 
 	aesEncryptingReader, err := security.NewAESEncryptingReader(contentReader, s.rootKey)
 	if err != nil {
-		return fmt.Errorf("application.CreateSecret: %w", err)
+		return fmt.Errorf("security.NewAESEncryptingReader: %w", err)
 	}
 
 	switch secret.Type {
@@ -50,7 +50,7 @@ func (s *SecretService) CreateSecret(ctx context.Context, secret *domain.Secret,
 	case domain.FileSecret, domain.TextSecret:
 		return s.createFileSecret(ctx, secret, aesEncryptingReader)
 	default:
-		return fmt.Errorf("application.CreateSecret: %w", domain.ErrInvalidSecretType)
+		return domain.ErrInvalidSecretType
 	}
 }
 
@@ -59,12 +59,12 @@ func (s *SecretService) createDataSecret(ctx context.Context, secret *domain.Sec
 	buf := new(bytes.Buffer)
 	_, err := io.Copy(buf, aesEncryptingReader)
 	if err != nil {
-		return fmt.Errorf("application.createDataSecret: %w", err)
+		return fmt.Errorf("io.Copy: %w", err)
 	}
 	secret.Data = buf.Bytes()
 
 	if err := s.db.CreateSecret(ctx, secret); err != nil {
-		return fmt.Errorf("application.createDataSecret: %w", err)
+		return fmt.Errorf("db.CreateSecret: %w", err)
 	}
 
 	return nil
@@ -74,15 +74,15 @@ func (s *SecretService) createDataSecret(ctx context.Context, secret *domain.Sec
 func (s *SecretService) createFileSecret(ctx context.Context, secret *domain.Secret, aesEncryptingReader io.Reader) error {
 	err := s.objStorage.SaveFileInChunks(ctx, generateSecretFilePath(secret), aesEncryptingReader)
 	if err != nil {
-		return fmt.Errorf("application.createFileSecret: %w", err)
+		return fmt.Errorf("objStorage.SaveFileInChunks: %w", err)
 	}
 
 	if err := s.db.CreateSecret(ctx, secret); err != nil {
 		deleteErr := s.objStorage.DeleteFile(ctx, fmt.Sprint(secret.Name, secret.Version))
 		if deleteErr != nil {
-			return fmt.Errorf("application.createFileSecret: failed to delete file after db error: %w", deleteErr)
+			return fmt.Errorf("objStorage.DeleteFile: failed to delete file after db error: %w, db.CreateSecret: %w", deleteErr, err)
 		}
-		return fmt.Errorf("application.createFileSecret: %w", err)
+		return fmt.Errorf("db.CreateSecret: %w", err)
 	}
 
 	return nil
@@ -92,7 +92,7 @@ func (s *SecretService) createFileSecret(ctx context.Context, secret *domain.Sec
 func (s *SecretService) GetSecretsList(ctx context.Context, userID string) ([]string, error) {
 	secrets, err := s.db.GetSecretsList(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("application.GetSecretsList: %w", err)
+		return nil, fmt.Errorf("db.GetSecretsList: %w", err)
 	}
 
 	return secrets, nil
@@ -102,11 +102,11 @@ func (s *SecretService) GetSecretsList(ctx context.Context, userID string) ([]st
 func (s *SecretService) GetLatestSecretByName(ctx context.Context, userID, secretName string) (*domain.Secret, error) {
 	secret, err := s.db.GetLatestSecretByName(ctx, userID, secretName)
 	if err != nil {
-		return nil, fmt.Errorf("application.GetLatestSecretByName: %w", err)
+		return nil, fmt.Errorf("db.GetLatestSecretByName: %w", err)
 	}
 
 	if err := s.decryptAndSetContent(secret); err != nil {
-		return nil, fmt.Errorf("application.GetLatestSecretByName: %w", err)
+		return nil, err
 	}
 
 	return secret, nil
@@ -114,20 +114,21 @@ func (s *SecretService) GetLatestSecretByName(ctx context.Context, userID, secre
 
 // GetSecretByVersion retrieves a specific version of a secret.
 func (s *SecretService) GetSecretByVersion(ctx context.Context, userID, secretName string, version int32) (*domain.Secret, error) {
-	if exists, err := s.db.IsSecretExist(ctx, userID, secretName); !exists {
-		if err != nil {
-			return nil, fmt.Errorf("application.GetSecretByVersion: %w", err)
-		}
+	exists, err := s.db.IsSecretExist(ctx, userID, secretName)
+	if err != nil {
+		return nil, fmt.Errorf("db.IsSecretExist: %w", err)
+	}
+	if !exists {
 		return nil, domain.ErrSecretNotFound
 	}
 
 	secret, err := s.db.GetSecretByVersion(ctx, userID, secretName, version)
 	if err != nil {
-		return nil, fmt.Errorf("application.GetSecretByVersion: %w", err)
+		return nil, fmt.Errorf("db.GetSecretByVersion: %w", err)
 	}
 
 	if err := s.decryptAndSetContent(secret); err != nil {
-		return nil, fmt.Errorf("application.GetSecretByVersion: %w", err)
+		return nil, err
 	}
 
 	return secret, nil
@@ -137,7 +138,7 @@ func (s *SecretService) GetSecretByVersion(ctx context.Context, userID, secretNa
 func (s *SecretService) decryptAndSetContent(secret *domain.Secret) error {
 	decryptedContent, err := security.DecryptAES(secret.Data, s.rootKey)
 	if err != nil {
-		return fmt.Errorf("application.decryptAndSetContent: %w", err)
+		return fmt.Errorf("security.DecryptAES: %w", err)
 	}
 	secret.Data = decryptedContent
 	return nil
@@ -147,17 +148,17 @@ func (s *SecretService) decryptAndSetContent(secret *domain.Secret) error {
 func (s *SecretService) GetLatestSecretStreamByName(ctx context.Context, userID, secretName string) (*domain.Secret, io.ReadCloser, error) {
 	secret, err := s.db.GetLatestSecretByName(ctx, userID, secretName)
 	if err != nil {
-		return nil, nil, fmt.Errorf("application.GetLatestSecretStreamByName: %w", err)
+		return nil, nil, fmt.Errorf("db.GetLatestSecretByName: %w", err)
 	}
 
 	reader, err := s.objStorage.ReadFileInChunks(ctx, fmt.Sprintf("%s%d", secretName, secret.Version))
 	if err != nil {
-		return nil, nil, fmt.Errorf("application.GetLatestSecretStreamByName: %w", err)
+		return nil, nil, fmt.Errorf("objStorage.ReadFileInChunks: %w", err)
 	}
 
 	decryptingReader, err := security.NewAESDecryptingReader(reader, s.rootKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("application.GetLatestSecretStreamByName: %w", err)
+		return nil, nil, fmt.Errorf("security.NewAESDecryptingReader: %w", err)
 	}
 
 	return secret, decryptingReader, nil
@@ -165,26 +166,27 @@ func (s *SecretService) GetLatestSecretStreamByName(ctx context.Context, userID,
 
 // GetSecretByVersion retrieves a specific version of a secret stream.
 func (s *SecretService) GetSecretStreamByVersion(ctx context.Context, userID, secretName string, version int32) (*domain.Secret, io.ReadCloser, error) {
-	if exists, err := s.db.IsSecretExist(ctx, userID, secretName); !exists {
-		if err != nil {
-			return nil, nil, fmt.Errorf("application.GetSecretStreamByVersion: %w", err)
-		}
+	exists, err := s.db.IsSecretExist(ctx, userID, secretName)
+	if err != nil {
+		return nil, nil, fmt.Errorf("db.IsSecretExist: %w", err)
+	}
+	if !exists {
 		return nil, nil, domain.ErrSecretNotFound
 	}
 
 	secret, err := s.db.GetSecretByVersion(ctx, userID, secretName, version)
 	if err != nil {
-		return nil, nil, fmt.Errorf("application.GetSecretStreamByVersion: %w", err)
+		return nil, nil, fmt.Errorf("db.GetSecretByVersion: %w", err)
 	}
 
 	reader, err := s.objStorage.ReadFileInChunks(ctx, fmt.Sprintf("%s%d", secretName, secret.Version))
 	if err != nil {
-		return nil, nil, fmt.Errorf("application.GetSecretStreamByVersion: %w", err)
+		return nil, nil, fmt.Errorf("objStorage.ReadFileInChunks: %w", err)
 	}
 
 	decryptingReader, err := security.NewAESDecryptingReader(reader, s.rootKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("application.GetSecretStreamByVersion: %w", err)
+		return nil, nil, fmt.Errorf("security.NewAESDecryptingReader: %w", err)
 	}
 
 	return secret, decryptingReader, nil
@@ -194,20 +196,20 @@ func (s *SecretService) GetSecretStreamByVersion(ctx context.Context, userID, se
 func (s *SecretService) DeleteSecret(ctx context.Context, userID, secretName string) error {
 	secret, err := s.db.GetLatestSecretByName(ctx, userID, secretName)
 	if err != nil {
-		return fmt.Errorf("application.DeleteSecret: %w", err)
+		return fmt.Errorf("db.GetLatestSecretByName: %w", err)
 	}
 
 	if secret.Type == domain.FileSecret || secret.Type == domain.TextSecret {
 		for i := 1; i < int(secret.Version)+1; i++ {
 			err = s.objStorage.DeleteFile(ctx, generateSecretFilePath(secret))
 			if err != nil {
-				return fmt.Errorf("application.DeleteSecret: %w", err)
+				return fmt.Errorf("objStorage.DeleteFile: %w", err)
 			}
 		}
 	}
 
 	if err = s.db.DeleteSecret(ctx, userID, secretName); err != nil {
-		return fmt.Errorf("application.DeleteSecret: %w", err)
+		return fmt.Errorf("db.DeleteSecret: %w", err)
 	}
 
 	return nil
