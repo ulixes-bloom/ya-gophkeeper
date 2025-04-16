@@ -1,0 +1,3 @@
+[submodule "internal/infrastructure/proto/contracts"]
+	path = internal/infrastructure/proto/contracts
+	url = https://github.com/ulixes-bloom/ya-gophkeeper-proto.git
